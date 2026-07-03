@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion } from "motion/react";
 import { HeroSection } from "./components/hero/HeroSection";
+import { ConfiguratorSection } from "./components/configurator/ConfiguratorSection";
 import { ArrowRight, Gauge, Zap, Wind, RotateCw, Play, Search, Sun, Moon, Lightbulb, Minus, Plus, Menu, X } from "lucide-react";
-import { gallery, heroCampaigns, hotspots, vehicles, viewerAngles } from "./data/vehicles";
+import { type VehicleConfiguration } from "./data/configurations";
+import { defaultShowroomState, type ShowroomState } from "./data/showroom";
+import { heroCampaigns, hotspots, vehicles, viewerAngles } from "./data/vehicles";
+import { selectConfigurationAccent, selectEnvironmentLabel, selectGalleryItems, selectHeroCampaign, selectPaintLabel, selectVehicle, selectVehicleIndex, selectViewerEnvironmentMode, selectViewerLightingEnabled, selectVisibleHotspots } from "./lib/showroomSelectors";
 
 // ── HOOKS ─────────────────────────────────────────────────────────────────────
 
@@ -53,7 +57,7 @@ function usePrefersReducedMotion() {
 // ── COMPONENT ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [activeModel, setActiveModel] = useState(0);
+  const [showroomState, setShowroomState] = useState<ShowroomState>(defaultShowroomState);
   const [viewerAngle, setViewerAngle] = useState(2);
   const [viewerKey, setViewerKey] = useState(0);
   const [navScrolled, setNavScrolled] = useState(false);
@@ -61,13 +65,10 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [baseAngle, setBaseAngle] = useState(2);
-  const [heroCampaign, setHeroCampaign] = useState(0);
   const [lastInteraction, setLastInteraction] = useState(Date.now());
   const [isIdle, setIsIdle] = useState(false);
   const [highlightStat, setHighlightStat] = useState(0);
   const [viewerZoom, setViewerZoom] = useState(1);
-  const [viewerLighting, setViewerLighting] = useState(true);
-  const [viewerEnvironment, setViewerEnvironment] = useState<"day" | "night">("night");
   const [activeHotspot, setActiveHotspot] = useState(hotspots[0].id);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
@@ -75,9 +76,19 @@ export default function App() {
   const heroRef = useRef<HTMLDivElement>(null);
   const { ref: statsRef, inView: statsInView } = useInView(0.3);
 
-  const hp = useCountUp(1200, 2000, statsInView);
-  const topSpeed = useCountUp(250, 1800, statsInView);
-  const torque = useCountUp(1100, 2200, statsInView);
+  const model = selectVehicle(showroomState);
+  const activeModel = selectVehicleIndex(showroomState);
+  const campaign = selectHeroCampaign(showroomState);
+  const configAccent = selectConfigurationAccent(showroomState);
+  const selectedPaintLabel = selectPaintLabel(showroomState);
+  const selectedEnvironmentLabel = selectEnvironmentLabel(showroomState);
+  const viewerEnvironment = selectViewerEnvironmentMode(showroomState);
+  const viewerLighting = selectViewerLightingEnabled(showroomState);
+  const derivedGallery = selectGalleryItems(showroomState);
+
+  const hp = useCountUp(model.hp, 2000, statsInView);
+  const topSpeed = useCountUp(model.topSpeed, 1800, statsInView);
+  const torque = useCountUp(model.torque, 2200, statsInView);
 
   useEffect(() => {
     const fn = () => setNavScrolled(window.scrollY > 80);
@@ -112,15 +123,14 @@ export default function App() {
   useEffect(() => {
     if (reducedMotion) return;
     const id = window.setInterval(() => {
-      setHeroCampaign(i => (i + 1) % heroCampaigns.length);
-      setHighlightStat(i => (i + 1) % heroCampaigns[heroCampaign].stats.length);
+      setHighlightStat(i => (i + 1) % campaign.stats.length);
       if (isIdle) {
         setViewerAngle(i => (i + 1) % viewerAngles.length);
         setViewerKey(k => k + 1);
       }
     }, isIdle ? 4200 : 7800);
     return () => window.clearInterval(id);
-  }, [heroCampaign, isIdle, reducedMotion]);
+  }, [campaign.stats.length, isIdle, reducedMotion]);
 
   const handleHeroMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (reducedMotion) return;
@@ -134,9 +144,9 @@ export default function App() {
     setIsIdle(false);
   };
 
-  const selectHeroCampaign = (index: number) => {
-    markUserInteraction();
-    setHeroCampaign(index);
+  const handleSelectHeroCampaign = (index: number) => {
+    const vehicle = vehicles[index % vehicles.length];
+    if (vehicle) selectVehicleById(vehicle.id);
   };
 
   const changeAngle = (i: number) => {
@@ -155,19 +165,33 @@ export default function App() {
   }, [isDragging, dragStartX, baseAngle, viewerAngle]);
   const onDragEnd = () => { if (isDragging) { setBaseAngle(viewerAngle); setIsDragging(false); } };
 
-  const model = vehicles[activeModel];
-  const campaign = heroCampaigns[heroCampaign];
   const currentCamera = viewerAngles[viewerAngle].label;
-  const visibleHotspots = useMemo(() => hotspots
-    .map(hotspot => ({ hotspot, position: hotspot.cameras[currentCamera] }))
-    .filter((item): item is { hotspot: typeof hotspots[number]; position: { x: number; y: number } } => Boolean(item.position)), [currentCamera]);
-  const activeHotspotData = hotspots.find(h => h.id === activeHotspot) ?? visibleHotspots[0]?.hotspot ?? hotspots[0];
+  const visibleHotspots = useMemo(() => selectVisibleHotspots(currentCamera), [currentCamera]);
+  const activeHotspotData = visibleHotspots.find(({ hotspot }) => hotspot.id === activeHotspot)?.hotspot ?? visibleHotspots[0]?.hotspot;
 
   useEffect(() => {
     if (visibleHotspots.length > 0 && !visibleHotspots.some(({ hotspot }) => hotspot.id === activeHotspot)) {
       setActiveHotspot(visibleHotspots[0].hotspot.id);
     }
   }, [activeHotspot, visibleHotspots]);
+
+  const updateConfiguration = <K extends keyof VehicleConfiguration>(key: K, value: VehicleConfiguration[K]) => {
+    markUserInteraction();
+    setShowroomState(current => ({
+      ...current,
+      configuration: { ...current.configuration, [key]: value, profile: key === "profile" ? String(value) : "custom" },
+    }));
+  };
+
+  const applyConfigurationProfile = (values: Partial<VehicleConfiguration>) => {
+    markUserInteraction();
+    setShowroomState(current => ({ ...current, configuration: { ...current.configuration, ...values } }));
+  };
+
+  const selectVehicleById = (vehicleId: string) => {
+    markUserInteraction();
+    setShowroomState(current => ({ ...current, selectedVehicleId: vehicleId }));
+  };
 
   return (
     <>
@@ -210,7 +234,7 @@ export default function App() {
               <span style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 700, letterSpacing: "0.18em", color: "#f0ead8" }}>VELORUM</span>
             </div>
             <div className="hidden md:flex items-center gap-10">
-              {["Models", "Experience", "Gallery", "Test Drive"].map(l => (
+              {["Models", "Experience", "Configurator", "Gallery", "Test Drive"].map(l => (
                 <a key={l} href={`#${l.toLowerCase().replace(" ", "-")}`}
                   className="text-xs tracking-widest uppercase transition-colors duration-200"
                   style={{ color: "rgba(240,234,216,.55)", fontWeight: 500 }}
@@ -233,7 +257,7 @@ export default function App() {
           </div>
           <div id="mobile-navigation" className={`md:hidden overflow-hidden transition-all duration-300 ${mobileNavOpen ? "max-h-96 border-t" : "max-h-0"}`} style={{ borderColor: "rgba(201,168,76,.1)", background: "rgba(5,5,8,.96)", backdropFilter: "blur(20px)" }}>
             <div className="px-6 py-5 flex flex-col gap-1">
-              {["Models", "Experience", "Gallery", "Test Drive"].map(l => (
+              {["Models", "Experience", "Configurator", "Gallery", "Test Drive"].map(l => (
                 <a key={l} href={`#${l.toLowerCase().replace(" ", "-")}`} onClick={() => setMobileNavOpen(false)} className="py-4 text-xs tracking-widest uppercase focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ color: "rgba(240,234,216,.7)", fontFamily: "'DM Mono',monospace", outlineColor: "#c9a84c" }}>{l}</a>
               ))}
               <a href="#test-drive" onClick={() => setMobileNavOpen(false)} className="mt-3 px-5 py-4 text-center text-xs tracking-widest uppercase font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ background: "#c9a84c", color: "#050508", outlineColor: "#f0ead8" }}>Book Viewing</a>
@@ -246,12 +270,12 @@ export default function App() {
           heroMouse={heroMouse}
           campaign={campaign}
           campaigns={heroCampaigns}
-          activeCampaign={heroCampaign}
+          activeCampaign={activeModel}
           isIdle={isIdle}
           highlightStat={highlightStat}
           reducedMotion={reducedMotion}
           onMouseMove={handleHeroMouseMove}
-          onSelectCampaign={selectHeroCampaign}
+          onSelectCampaign={handleSelectHeroCampaign}
         />
 
         {/* ── MODELS ── */}
@@ -270,7 +294,7 @@ export default function App() {
             {/* Tabs */}
             <div className="flex gap-0 mt-10 border-b" style={{ borderColor: "rgba(201,168,76,.1)" }}>
               {vehicles.map((m, i) => (
-                <button key={m.id} onClick={() => setActiveModel(i)}
+                <button key={m.id} onClick={() => selectVehicleById(m.id)}
                   className="px-5 py-4 text-xs tracking-widest uppercase transition-all duration-300 whitespace-nowrap"
                   style={{
                     fontFamily: "'Inter',sans-serif",
@@ -293,8 +317,8 @@ export default function App() {
                   style={{ minHeight: 400 }} />
                 <div className="absolute inset-0" style={{ background: "linear-gradient(to right,transparent 55%,rgba(7,7,15,.92) 100%)" }} />
                 <div className="absolute bottom-6 left-6 flex items-center gap-2">
-                  <div className="w-3 h-3" style={{ background: model.accent, boxShadow: `0 0 8px ${model.accent}` }} />
-                  <span className="text-xs tracking-widest uppercase" style={{ color: "rgba(240,234,216,.5)", fontFamily: "'DM Mono',monospace" }}>{model.colorName}</span>
+                  <div className="w-3 h-3" style={{ background: configAccent, boxShadow: `0 0 8px ${configAccent}` }} />
+                  <span className="text-xs tracking-widest uppercase" style={{ color: "rgba(240,234,216,.5)", fontFamily: "'DM Mono',monospace" }}>{selectedPaintLabel}</span>
                 </div>
               </div>
 
@@ -340,6 +364,7 @@ export default function App() {
                   <div>
                     <div className="text-xs tracking-widest uppercase mb-1" style={{ color: "rgba(240,234,216,.28)", fontFamily: "'DM Mono',monospace" }}>Showroom status</div>
                     <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 600 }}>{model.viewingStatus}</div>
+                    <div className="mt-2 text-xs" style={{ color: "rgba(240,234,216,.35)", fontFamily: "'DM Mono',monospace" }}>{selectedEnvironmentLabel} · {showroomState.configuration.suspension.replace("-", " ")}</div>
                   </div>
                   <button className="flex items-center gap-2 px-6 py-3 text-xs tracking-widest uppercase transition-all duration-300"
                     style={{ border: "1px solid rgba(201,168,76,.35)", color: "#c9a84c" }}
@@ -386,27 +411,30 @@ export default function App() {
               onTouchMove={e => onDragMove(e.touches[0].clientX)}
               onTouchEnd={onDragEnd}>
 
-              <div style={{ perspective: "1400px" }}>
-                <img key={viewerKey}
-                  src={viewerAngles[viewerAngle].image}
-                  alt={`Car ${viewerAngles[viewerAngle].label} view`}
-                  width="1300" height="700" decoding="async"
-                  className="w-full object-cover car-anim"
-                  style={{ height: "clamp(300px,50vh,540px)", display: "block", border: "1px solid rgba(201,168,76,.09)", transform: `scale(${viewerZoom})`, filter: `${viewerEnvironment === "night" ? "brightness(.72) contrast(1.12)" : "brightness(1.05) contrast(1.04)"} ${viewerLighting ? "drop-shadow(0 0 28px rgba(201,168,76,.22))" : ""}`, transition: "transform .45s ease, filter .45s ease" }}
-                  draggable={false} />
-              </div>
+              <div className="relative overflow-hidden" style={{ perspective: "1400px", border: "1px solid rgba(201,168,76,.09)", aspectRatio: "13 / 7", maxHeight: 540 }}>
+                <div key={viewerKey} className="relative h-full w-full car-anim"
+                  style={{ transform: `scale(${viewerZoom})`, filter: `${viewerEnvironment === "night" ? "brightness(.72) contrast(1.12)" : "brightness(1.05) contrast(1.04)"} ${viewerLighting ? `drop-shadow(0 0 28px ${configAccent}55)` : ""}`, transition: "transform .45s ease, filter .45s ease", transformOrigin: "center center" }}>
+                  <img
+                    src={viewerAngles[viewerAngle].image}
+                    alt={`Car ${viewerAngles[viewerAngle].label} view`}
+                    width="1300" height="700" decoding="async"
+                    className="h-full w-full object-cover"
+                    style={{ display: "block" }}
+                    draggable={false} />
 
-              {/* Overlays */}
-              <div className="absolute inset-0 pointer-events-none"
-                style={{ background: "linear-gradient(to top,rgba(5,5,8,1) 0%,transparent 30%,transparent 72%,rgba(5,5,8,.25) 100%)" }} />
+                  <div className="absolute inset-0 pointer-events-none">
+                    {visibleHotspots.map(({ hotspot, position }) => (
+                      <button key={hotspot.id} type="button" onClick={() => { markUserInteraction(); setActiveHotspot(hotspot.id); }} className="hotspot-dot absolute pointer-events-auto flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full transition-transform duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4" aria-label={`Inspect ${hotspot.title}`} aria-pressed={activeHotspot === hotspot.id}
+                        style={{ left: `${position.x}%`, top: `${position.y}%`, background: "rgba(5,5,8,.42)", border: activeHotspot === hotspot.id ? "1px solid rgba(245,216,128,.95)" : "1px solid rgba(240,234,216,.45)", outlineColor: "#c9a84c" }}>
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: activeHotspot === hotspot.id ? "#c9a84c" : "rgba(201,168,76,.72)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#050508" }} /></span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <div className="absolute inset-0 pointer-events-none">
-                {visibleHotspots.map(({ hotspot, position }) => (
-                  <button key={hotspot.id} type="button" onClick={() => { markUserInteraction(); setActiveHotspot(hotspot.id); }} className="hotspot-dot absolute pointer-events-auto flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full transition-transform duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4" aria-label={`Inspect ${hotspot.title}`} aria-pressed={activeHotspot === hotspot.id}
-                    style={{ left: `${position.x}%`, top: `${position.y}%`, background: "rgba(5,5,8,.42)", border: activeHotspot === hotspot.id ? "1px solid rgba(245,216,128,.95)" : "1px solid rgba(240,234,216,.45)", outlineColor: "#c9a84c" }}>
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: activeHotspot === hotspot.id ? "#c9a84c" : "rgba(201,168,76,.72)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#050508" }} /></span>
-                  </button>
-                ))}
+                {/* Overlays */}
+                <div className="absolute inset-0 pointer-events-none"
+                  style={{ background: "linear-gradient(to top,rgba(5,5,8,1) 0%,transparent 30%,transparent 72%,rgba(5,5,8,.25) 100%)" }} />
               </div>
 
               <div className="hidden sm:block absolute top-5 right-5 px-4 py-2 text-xs tracking-widest uppercase"
@@ -421,8 +449,8 @@ export default function App() {
                   <button type="button" aria-label="Zoom in" onClick={() => { markUserInteraction(); setViewerZoom(z => Math.min(1.24, +(z + .08).toFixed(2))); }} className="p-2 transition-colors" style={{ color: "rgba(240,234,216,.55)" }}><Plus size={14} /></button>
                 </div>
                 <div className="flex flex-wrap gap-2 max-w-xs">
-                  <button type="button" aria-pressed={viewerLighting} onClick={() => { markUserInteraction(); setViewerLighting(v => !v); }} className="flex items-center gap-2 px-3 py-2 text-[10px] tracking-widest uppercase" style={{ background: viewerLighting ? "rgba(201,168,76,.12)" : "rgba(5,5,8,.7)", border: "1px solid rgba(201,168,76,.16)", color: viewerLighting ? "#c9a84c" : "rgba(240,234,216,.42)", fontFamily: "'DM Mono',monospace", backdropFilter: "blur(12px)" }}><Lightbulb size={12} /> Lights</button>
-                  <button type="button" aria-pressed={viewerEnvironment === "night"} onClick={() => { markUserInteraction(); setViewerEnvironment(v => v === "night" ? "day" : "night"); }} className="flex items-center gap-2 px-3 py-2 text-[10px] tracking-widest uppercase" style={{ background: "rgba(5,5,8,.7)", border: "1px solid rgba(201,168,76,.16)", color: "rgba(240,234,216,.5)", fontFamily: "'DM Mono',monospace", backdropFilter: "blur(12px)" }}>{viewerEnvironment === "night" ? <Moon size={12} /> : <Sun size={12} />} {viewerEnvironment}</button>
+                  <button type="button" aria-pressed={viewerLighting} onClick={() => updateConfiguration("studioLighting", viewerLighting ? "softbox" : "cinematic") } className="flex items-center gap-2 px-3 py-2 text-[10px] tracking-widest uppercase" style={{ background: viewerLighting ? "rgba(201,168,76,.12)" : "rgba(5,5,8,.7)", border: "1px solid rgba(201,168,76,.16)", color: viewerLighting ? configAccent : "rgba(240,234,216,.42)", fontFamily: "'DM Mono',monospace", backdropFilter: "blur(12px)" }}><Lightbulb size={12} /> Lights</button>
+                  <button type="button" aria-pressed={viewerEnvironment === "night"} onClick={() => updateConfiguration("environment", viewerEnvironment === "night" ? "studio" : "night-city") } className="flex items-center gap-2 px-3 py-2 text-[10px] tracking-widest uppercase" style={{ background: "rgba(5,5,8,.7)", border: "1px solid rgba(201,168,76,.16)", color: "rgba(240,234,216,.5)", fontFamily: "'DM Mono',monospace", backdropFilter: "blur(12px)" }}>{viewerEnvironment === "night" ? <Moon size={12} /> : <Sun size={12} />} {viewerEnvironment}</button>
                 </div>
               </div>
 
@@ -461,13 +489,13 @@ export default function App() {
 
             {/* Hotspot callouts */}
             <div className="mt-14 grid lg:grid-cols-[.9fr_1.1fr] gap-px" style={{ background: "rgba(201,168,76,.06)" }}>
-              <motion.div key={activeHotspotData.id} initial={reducedMotion ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reducedMotion ? 0 : .3 }} className="p-7" aria-live="polite" style={{ background: "linear-gradient(135deg,rgba(13,13,20,.98),rgba(5,5,8,.98))" }}>
+              <motion.div key={activeHotspotData?.id ?? currentCamera} initial={reducedMotion ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reducedMotion ? 0 : .3 }} className="p-7" aria-live="polite" style={{ background: "linear-gradient(135deg,rgba(13,13,20,.98),rgba(5,5,8,.98))" }}>
                 <div className="flex items-center gap-3 mb-4">
                   <Search size={15} style={{ color: "#c9a84c" }} />
                   <span className="text-xs tracking-widest uppercase" style={{ color: "#c9a84c", fontFamily: "'DM Mono',monospace" }}>Active inspection</span>
                 </div>
-                <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 700 }}>{activeHotspotData.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed" style={{ color: "rgba(240,234,216,.45)" }}>{activeHotspotData.desc}</p>
+                <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 700 }}>{activeHotspotData?.title ?? "Camera inspection"}</h3>
+                <p className="mt-3 text-sm leading-relaxed" style={{ color: "rgba(240,234,216,.45)" }}>{activeHotspotData?.desc ?? "Select another camera preset to inspect available hotspots."}</p>
               </motion.div>
               <div className="grid sm:grid-cols-2">
                 {visibleHotspots.map(({ hotspot }) => (
@@ -482,6 +510,17 @@ export default function App() {
             </div>
           </div>
         </section>
+
+        <ConfiguratorSection
+          configuration={showroomState.configuration}
+          onChange={updateConfiguration}
+          onApplyProfile={applyConfigurationProfile}
+          reducedMotion={reducedMotion}
+          modelName={model.name}
+          vehicles={vehicles}
+          selectedVehicleId={showroomState.selectedVehicleId}
+          onVehicleChange={selectVehicleById}
+        />
 
         {/* ── PERFORMANCE STATS ── */}
         <section ref={statsRef} className="py-28 relative" style={{ background: "#07070f" }}>
@@ -505,7 +544,7 @@ export default function App() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-px" style={{ background: "rgba(201,168,76,.07)" }}>
               {[
                 { label: "Peak Horsepower", display: hp.toLocaleString(), unit: "HP", icon: <Zap size={18} /> },
-                { label: "0 to 60 mph", display: "1.9", unit: "sec", icon: <Gauge size={18} /> },
+                { label: "0 to 60 mph", display: model.zeroToSixty.toString(), unit: "sec", icon: <Gauge size={18} /> },
                 { label: "Top Speed", display: topSpeed.toLocaleString(), unit: "mph", icon: <Wind size={18} /> },
                 { label: "Torque Output", display: torque.toLocaleString(), unit: "lb-ft", icon: <RotateCw size={18} /> },
               ].map((s, i) => (
@@ -556,7 +595,7 @@ export default function App() {
             </motion.div>
 
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2" style={{ gridAutoRows: "220px" }}>
-              {gallery.map((item, i) => (
+              {derivedGallery.map((item, i) => (
                 <motion.div key={item.id}
                   initial={reducedMotion ? false : { opacity: 0, scale: .96 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: reducedMotion ? 0 : i * .07, duration: reducedMotion ? 0 : .45 }}
                   className={`relative overflow-hidden group ${item.tall ? "row-span-2" : ""}`}

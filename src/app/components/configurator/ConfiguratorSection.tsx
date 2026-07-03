@@ -9,6 +9,7 @@ import {
   type ConfigCategory,
   type VehicleConfiguration,
 } from "../../data/configurations";
+import type { Vehicle } from "../../data/vehicles";
 
 const categories: Array<{ id: ConfigCategory; label: string }> = [
   { id: "exterior", label: "Exterior" },
@@ -23,9 +24,12 @@ type ConfiguratorSectionProps = {
   onApplyProfile: (values: Partial<VehicleConfiguration>) => void;
   reducedMotion: boolean;
   modelName: string;
+  vehicles: Vehicle[];
+  selectedVehicleId: string;
+  onVehicleChange: (vehicleId: string) => void;
 };
 
-export function ConfiguratorSection({ configuration, onChange, onApplyProfile, reducedMotion, modelName }: ConfiguratorSectionProps) {
+export function ConfiguratorSection({ configuration, onChange, onApplyProfile, reducedMotion, modelName, vehicles, selectedVehicleId, onVehicleChange }: ConfiguratorSectionProps) {
   const accent = getConfigurationAccent(configuration);
   const selectedPaint = getConfigurationOption("paint", configuration.paint);
   const selectedLeather = getConfigurationOption("leather", configuration.leather);
@@ -86,6 +90,27 @@ export function ConfiguratorSection({ configuration, onChange, onApplyProfile, r
 
         <div className="grid xl:grid-cols-[.78fr_1.22fr] gap-px" style={{ background: "rgba(201,168,76,.08)" }}>
           <aside className="p-6 lg:p-8" style={{ background: "rgba(5,5,8,.96)" }}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-2 h-2" style={{ background: accent, boxShadow: `0 0 14px ${accent}` }} />
+              <h3 className="text-xs tracking-widest uppercase" style={{ color: "#c9a84c", fontFamily: "'DM Mono',monospace" }}>Vehicle</h3>
+            </div>
+            <div className="grid gap-2 mb-8">
+              {vehicles.map(vehicle => {
+                const selected = vehicle.id === selectedVehicleId;
+                return (
+                  <button key={vehicle.id} type="button" onClick={() => onVehicleChange(vehicle.id)} aria-pressed={selected}
+                    className="p-4 text-left transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={{ background: selected ? "rgba(201,168,76,.1)" : "rgba(13,13,20,.78)", border: selected ? "1px solid rgba(201,168,76,.45)" : "1px solid rgba(201,168,76,.08)", outlineColor: "#c9a84c" }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm" style={{ color: selected ? "#c9a84c" : "#f0ead8" }}>{vehicle.name}</span>
+                      {selected && <Check size={14} style={{ color: "#c9a84c" }} />}
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed" style={{ color: "rgba(240,234,216,.36)" }}>{vehicle.tagline}</p>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="flex items-center gap-3 mb-6">
               <div className="w-2 h-2" style={{ background: accent, boxShadow: `0 0 14px ${accent}` }} />
               <h3 className="text-xs tracking-widest uppercase" style={{ color: "#c9a84c", fontFamily: "'DM Mono',monospace" }}>Curated profiles</h3>
