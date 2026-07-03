@@ -35,9 +35,7 @@ export type Hotspot = {
   id: string;
   title: string;
   desc: string;
-  x: number;
-  y: number;
-  angle: number;
+  cameras: Partial<Record<string, { x: number; y: number }>>;
 };
 
 export const vehicles: Vehicle[] = [
@@ -147,11 +145,36 @@ export const viewerAngles: ViewerAngle[] = [
 ];
 
 export const hotspots: Hotspot[] = [
-  { id: "headlights", title: "Matrix LED Headlights", desc: "Adaptive projection signatures cut through rain and darkness without dazzling oncoming traffic.", x: 28, y: 44, angle: 0 },
-  { id: "brakes", title: "Carbon Ceramic Brakes", desc: "Fade-resistant stopping power with hand-finished calipers and track-grade thermal stability.", x: 37, y: 67, angle: 2 },
-  { id: "cabin", title: "Bespoke Cabin", desc: "Hand-stitched leather, floating glass displays, and acoustic isolation tuned like a private lounge.", x: 56, y: 42, angle: 4 },
-  { id: "aero", title: "Active Aero Package", desc: "A discreet adaptive wing and underbody channels rebalance downforce at speed.", x: 74, y: 53, angle: 3 },
-  { id: "powertrain", title: "Battery / Engine Core", desc: "Thermal-managed power delivery keeps acceleration repeatable during intense demonstration drives.", x: 63, y: 62, angle: 7 },
+  {
+    id: "headlights",
+    title: "Matrix LED Headlights",
+    desc: "Adaptive projection signatures cut through rain and darkness without dazzling oncoming traffic.",
+    cameras: { Front: { x: 36, y: 48 }, "3/4 Front": { x: 31, y: 49 } },
+  },
+  {
+    id: "brakes",
+    title: "Carbon Ceramic Brakes",
+    desc: "Fade-resistant stopping power with hand-finished calipers and track-grade thermal stability.",
+    cameras: { "3/4 Front": { x: 39, y: 67 }, Side: { x: 31, y: 66 }, Wheel: { x: 50, y: 52 } },
+  },
+  {
+    id: "cabin",
+    title: "Bespoke Cabin",
+    desc: "Hand-stitched leather, floating glass displays, and acoustic isolation tuned like a private lounge.",
+    cameras: { Interior: { x: 49, y: 45 }, Cockpit: { x: 47, y: 52 }, Side: { x: 53, y: 43 } },
+  },
+  {
+    id: "aero",
+    title: "Active Aero Package",
+    desc: "A discreet adaptive wing and underbody channels rebalance downforce at speed.",
+    cameras: { "3/4 Rear": { x: 68, y: 47 }, Side: { x: 78, y: 49 } },
+  },
+  {
+    id: "powertrain",
+    title: "Battery / Engine Core",
+    desc: "Thermal-managed power delivery keeps acceleration repeatable during intense demonstration drives.",
+    cameras: { Engine: { x: 52, y: 50 }, "3/4 Rear": { x: 58, y: 62 } },
+  },
 ];
 
 export const gallery = [
